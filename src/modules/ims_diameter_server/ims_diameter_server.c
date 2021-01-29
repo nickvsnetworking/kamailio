@@ -302,7 +302,10 @@ int diameter_request(struct sip_msg * msg, char* peer, char* appid, char* comman
 		LM_ERR("failed to get Command-Code\n");
 		return -1;
 	}
-
+        if (get_str_fparam(&s_message, msg, (fparam_t*)message) < 0) {
+                LM_ERR("failed to get Message\n");
+                return -1;
+        }
 	session = cdpb.AAACreateSession(0);
 
 	req = cdpb.AAACreateRequest(i_appid, i_commandcode, Flag_Proxyable, session);
