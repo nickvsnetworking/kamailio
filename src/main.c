@@ -120,8 +120,8 @@
 #ifdef USE_DNS_CACHE
 #include "core/dns_cache.h"
 #endif
-#ifdef USE_DST_BLACKLIST
-#include "core/dst_blacklist.h"
+#ifdef USE_DST_BLOCKLIST
+#include "core/dst_blocklist.h"
 #endif
 #include "core/rand/fastrand.h" /* seed */
 #include "core/rand/kam_rand.h"
@@ -169,7 +169,9 @@ Options:\n\
     -b nr        Maximum receive buffer size which will not be exceeded by\n\
                   auto-probing procedure even if  OS allows\n\
     -c           Check configuration file for syntax errors\n\
-    -d           Debugging mode (multiple -d increase the level)\n\
+    --cfg-print  Print configuration file evaluating includes and ifdefs\n\
+    -d           Debugging level control (multiple -d to increase the level from 0)\n\
+    --debug=val  Debugging level value\n\
     -D           Control how daemonize is done:\n\
                   -D..do not fork (almost) anyway;\n\
                   -DD..do not daemonize creator;\n\
@@ -532,6 +534,8 @@ char *sr_memmng_shm = NULL;
 
 static int *_sr_instance_started = NULL;
 
+int ksr_cfg_print_mode = 0;
+
 /**
  * return 1 if all child processes were forked
  * - note: they might still be in init phase (i.e., child init)
@@ -563,8 +567,8 @@ void cleanup(int show_status)
 #ifdef USE_DNS_CACHE
 	destroy_dns_cache();
 #endif
-#ifdef USE_DST_BLACKLIST
-	destroy_dst_blacklist();
+#ifdef USE_DST_BLOCKLIST
+	destroy_dst_blocklist();
 #endif
 	/* restore the original core configuration before the
 	 * config block is freed, otherwise even logging is unusable,
@@ -793,14 +797,12 @@ void handle_sigs(void)
 				break;
 			}
 
-#ifndef STOP_JIRIS_CHANGES
 			if (dont_fork) {
 				LM_INFO("dont_fork turned on, living on\n");
 				break;
 			}
 			LM_INFO("terminating due to SIGCHLD\n");
-#endif
-			LM_DBG("terminating due to SIGCHLD\n");
+
 			/* exit */
 			shutdown_children(SIGTERM, 1);
 			if (WIFSIGNALED(chld_status)) {
@@ -829,9 +831,10 @@ void handle_sigs(void)
 */
 void sig_usr(int signo)
 {
-
+#ifdef SIG_DEBUG
 #ifdef PKG_MALLOC
 	int memlog;
+#endif
 #endif
 
 	if (is_main){
@@ -855,7 +858,7 @@ void sig_usr(int signo)
 #ifdef SIG_DEBUG /* signal unsafe stuff follows */
 					LM_INFO("signal %d received\n", signo);
 					/* print memory stats for non-main too */
-					#ifdef PKG_MALLOC
+#ifdef PKG_MALLOC
 					/* make sure we have current cfg values, but update only
 					  the safe part (values not requiring callbacks), to
 					  account for processes that might not have registered
@@ -873,11 +876,13 @@ void sig_usr(int signo)
 							pkg_sums();
 						}
 					}
-					#endif
+#endif
 #endif
 					_exit(0);
 					break;
 			case SIGUSR1:
+#ifdef SIG_DEBUG /* signal unsafe stuff follows */
+					LM_INFO("signal %d received\n", signo);
 #ifdef PKG_MALLOC
 					cfg_update_no_cbs();
 					memlog=cfg_get(core, core_cfg, memlog);
@@ -892,19 +897,19 @@ void sig_usr(int signo)
 						}
 					}
 #endif
+#endif
 					break;
 				/* ignored*/
 			case SIGUSR2:
 			case SIGHUP:
+#ifdef SIG_DEBUG /* signal unsafe stuff follows */
+					LM_INFO("signal %d received - ignoring\n", signo);
+#endif
 					break;
 			case SIGCHLD:
-#ifndef 			STOP_JIRIS_CHANGES
 #ifdef SIG_DEBUG /* signal unsafe stuff follows */
 					LM_DBG("SIGCHLD received: "
 						"we do not worry about grand-children\n");
-#endif
-#else
-					_exit(0); /* terminate if one child died */
 #endif
 					break;
 		}
@@ -1768,7 +1773,7 @@ int main_loop(void)
 		if (!tcp_disable){
 				/* start tcp  & tls receivers */
 			if (tcp_init_children()<0) goto error;
-				/* start tcp+tls master proc */
+				/* start tcp+tls main attendant proc */
 			pid = fork_process(PROC_TCP_MAIN, "tcp main process", 0);
 			if (pid<0){
 				LM_CRIT("cannot fork tcp main process: %s\n", strerror(errno));
@@ -1931,6 +1936,8 @@ int main(int argc, char** argv)
 		{"loadmodule",  required_argument, 0, KARGOPTVAL + 5},
 		{"modparam",    required_argument, 0, KARGOPTVAL + 6},
 		{"log-engine",  required_argument, 0, KARGOPTVAL + 7},
+		{"debug",       required_argument, 0, KARGOPTVAL + 8},
+		{"cfg-print",   no_argument,       0, KARGOPTVAL + 9},
 		{0, 0, 0, 0 }
 	};
 
@@ -1942,6 +1949,7 @@ int main(int argc, char** argv)
 	debug_flag=0;
 	dont_fork_cnt=0;
 
+	ksr_hname_init_index();
 	sr_cfgenv_init();
 	daemon_status_init();
 
@@ -1991,6 +1999,17 @@ int main(int argc, char** argv)
 					break;
 			case KARGOPTVAL+7:
 					ksr_slog_init(optarg);
+					break;
+			case KARGOPTVAL+8:
+					debug_flag = 1;
+					default_core_cfg.debug=(int)strtol(optarg, &tmp, 10);
+					if ((tmp==0) || (*tmp)){
+						LM_ERR("bad debug level value: %s\n", optarg);
+						goto error;
+					}
+					break;
+			case KARGOPTVAL+9:
+					ksr_cfg_print_mode = 1;
 					break;
 
 			default:
@@ -2153,6 +2172,8 @@ int main(int argc, char** argv)
 			case KARGOPTVAL+5:
 			case KARGOPTVAL+6:
 			case KARGOPTVAL+7:
+			case KARGOPTVAL+8:
+			case KARGOPTVAL+9:
 					break;
 
 			/* long options */
@@ -2306,13 +2327,21 @@ try_again:
 
 	yyin=cfg_stream;
 	debug_save = default_core_cfg.debug;
-	if ((yyparse()!=0)||(cfg_errors)||(pp_ifdef_level_check()<0)){
-		fprintf(stderr, "ERROR: bad config file (%d errors)\n", cfg_errors);
+	ksr_cfg_print_initial_state();
+	r = yyparse();
+	if (ksr_cfg_print_mode == 1) {
+		/* printed evaluated content of config file based on include and ifdef */
+		return 0;
+	}
+	if ((r!=0)||(cfg_errors)||(pp_ifdef_level_check()<0)){
+		fprintf(stderr, "ERROR: bad config file (%d errors) (parsing code: %d)\n",
+				cfg_errors, r);
 		if (debug_flag) default_core_cfg.debug = debug_save;
 		pp_ifdef_level_error();
 
 		goto error;
 	}
+
 	if (cfg_warnings){
 		fprintf(stderr, "%d config warnings\n", cfg_warnings);
 	}
@@ -2530,8 +2559,12 @@ try_again:
 	if (ksr_route_locks_set_init()<0)
 		goto error;
 
+	ksr_shutdown_phase_init();
+
 	/* init lookup for core event routes */
 	sr_core_ert_init();
+
+	ksr_hname_init_config();
 
 	if (dont_fork_cnt)
 		dont_fork = dont_fork_cnt;	/* override by command line */
@@ -2715,18 +2748,18 @@ try_again:
 	}
 #endif /* USE_DNS_CACHE_STATS */
 #endif
-#ifdef USE_DST_BLACKLIST
-	if (init_dst_blacklist()<0){
-		LM_CRIT("could not initialize the dst blacklist, exiting...\n");
+#ifdef USE_DST_BLOCKLIST
+	if (init_dst_blocklist()<0){
+		LM_CRIT("could not initialize the dst blocklist, exiting...\n");
 		goto error;
 	}
-#ifdef USE_DST_BLACKLIST_STATS
+#ifdef USE_DST_BLOCKLIST_STATS
 	/* preinitializing before the number of processes is determined */
-	if (init_dst_blacklist_stats(1)<0){
-		LM_CRIT("could not initialize the dst blacklist measurement\n");
+	if (init_dst_blocklist_stats(1)<0){
+		LM_CRIT("could not initialize the dst blocklist measurement\n");
 		goto error;
 	}
-#endif /* USE_DST_BLACKLIST_STATS */
+#endif /* USE_DST_BLOCKLIST_STATS */
 #endif
 	if (init_avps()<0) goto error;
 	if (rpc_init_time() < 0) goto error;
@@ -2828,9 +2861,9 @@ try_again:
 		goto error;
 	}
 #endif
-#if defined USE_DST_BLACKLIST && defined USE_DST_BLACKLIST_STATS
-	if (init_dst_blacklist_stats(get_max_procs())<0){
-		LM_CRIT("could not initialize the dst blacklist measurement\n");
+#if defined USE_DST_BLOCKLIST && defined USE_DST_BLOCKLIST_STATS
+	if (init_dst_blocklist_stats(get_max_procs())<0){
+		LM_CRIT("could not initialize the dst blocklist measurement\n");
 		goto error;
 	}
 #endif

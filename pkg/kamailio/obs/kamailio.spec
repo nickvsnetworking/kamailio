@@ -1,5 +1,5 @@
 %define name    kamailio
-%define ver 5.2.0
+%define ver 5.4.0
 %define rel dev1.0%{dist}
 
 %if 0%{?fedora}
@@ -238,11 +238,11 @@
 %endif
 
 
-Summary:    Kamailio (former OpenSER) - the Open Source SIP Server
+Summary:    Kamailio - the Open Source SIP Server
 Name:       %name
 Version:    %ver
 Release:    %rel
-Packager:   Peter Dunkley <peter@dunkley.me.uk>
+Packager:   Sergey Safarov <s.safarov@gmail.com>
 License:    GPL-2.0
 Group:      %{PKGGROUP}
 Source:     http://kamailio.org/pub/kamailio/%{ver}/src/%{name}-%{ver}_src.tar.gz
@@ -271,11 +271,12 @@ Conflicts:  kamailio-utils < %ver, kamailio-websocket < %ver
 Conflicts:  kamailio-xhttp-pi < %ver, kamailio-xmlops < %ver
 Conflicts:  kamailio-xmlrpc < %ver, kamailio-xmpp < %ver
 Conflicts:  kamailio-uuid < %ver
-BuildRequires:  bison, flex
+BuildRequires:  bison, flex, which, make, gcc, gcc-c++, pkgconfig
 %if 0%{?rhel} != 6
 Requires:  systemd
 BuildRequires:  systemd-devel
 %endif
+
 %if 0%{?suse_version} == 1315 || 0%{?suse_version} == 1330
 Requires:  filesystem
 BuildRequires:  shadow
@@ -1113,6 +1114,10 @@ UUID module for Kamailio.
 
 %prep
 %setup -n %{name}-%{ver}
+# python3 does not exist in RHEL 6 and similar dist.
+%if 0%{?rhel} == 6
+sed -i -e 's/python3/python2/' utils/kamctl/dbtextdb/dbtextdb.py
+%endif
 
 %build
 ln -s ../obs pkg/kamailio/%{dist_name}/%{dist_version}
@@ -1149,6 +1154,7 @@ make every-module skip_modules="app_mono db_cassandra db_oracle iptrtpproxy \
 %if %{with http_async_client}
     khttp_async \
 %endif
+    kxhttp_prom \
 %if %{with ims}
     kims \
 %endif
@@ -1162,10 +1168,7 @@ make every-module skip_modules="app_mono db_cassandra db_oracle iptrtpproxy \
 %if %{with kazoo}
     kkazoo \
 %endif
-%if %{with rabbitmq}
-    krabbitmq \
-%endif
-    kldap 
+    kldap \
 %if %{with lua}
     klua \
 %endif
@@ -1188,6 +1191,9 @@ make every-module skip_modules="app_mono db_cassandra db_oracle iptrtpproxy \
     kpostgres kpresence kpython \
 %if %{with python3}
     kpython3 \
+%endif
+%if %{with rabbitmq}
+    krabbitmq \
 %endif
     kradius \
 %if %{with redis}
@@ -1240,6 +1246,7 @@ make install-modules-all skip_modules="app_mono db_cassandra db_oracle \
 %if %{with http_async_client}
     khttp_async \
 %endif
+    kxhttp_prom \
 %if %{with ims}
     kims \
 %endif
@@ -1252,9 +1259,6 @@ make install-modules-all skip_modules="app_mono db_cassandra db_oracle \
     kjsonrpcs \
 %if %{with kazoo}
     kkazoo \
-%endif
-%if %{with rabbitmq}
-    krabbitmq \
 %endif
     kldap \
 %if %{with lua}
@@ -1279,6 +1283,9 @@ make install-modules-all skip_modules="app_mono db_cassandra db_oracle \
     kpostgres kpresence kpython \
 %if %{with python3}
     kpython3 \
+%endif
+%if %{with rabbitmq}
+    krabbitmq \
 %endif
     kradius \
 %if %{with redis}
@@ -1422,6 +1429,7 @@ fi
 %doc %{_docdir}/kamailio/modules/README.dialog
 %doc %{_docdir}/kamailio/modules/README.dispatcher
 %doc %{_docdir}/kamailio/modules/README.diversion
+%doc %{_docdir}/kamailio/modules/README.dlgs
 %doc %{_docdir}/kamailio/modules/README.dmq
 %doc %{_docdir}/kamailio/modules/README.domain
 %doc %{_docdir}/kamailio/modules/README.domainpolicy
@@ -1483,6 +1491,7 @@ fi
 %doc %{_docdir}/kamailio/modules/README.sst
 %doc %{_docdir}/kamailio/modules/README.statistics
 %doc %{_docdir}/kamailio/modules/README.stun
+%doc %{_docdir}/kamailio/modules/README.sworker
 %doc %{_docdir}/kamailio/modules/README.textops
 %doc %{_docdir}/kamailio/modules/README.textopsx
 %doc %{_docdir}/kamailio/modules/README.timer
@@ -1498,7 +1507,7 @@ fi
 %doc %{_docdir}/kamailio/modules/README.uid_gflags
 %doc %{_docdir}/kamailio/modules/README.uid_uri_db
 %doc %{_docdir}/kamailio/modules/README.uri_db
-%doc %{_docdir}/kamailio/modules/README.userblacklist
+%doc %{_docdir}/kamailio/modules/README.userblocklist
 %doc %{_docdir}/kamailio/modules/README.usrloc
 %doc %{_docdir}/kamailio/modules/README.xhttp
 %doc %{_docdir}/kamailio/modules/README.xhttp_prom
@@ -1578,6 +1587,7 @@ fi
 %{_libdir}/kamailio/modules/dialog.so
 %{_libdir}/kamailio/modules/dispatcher.so
 %{_libdir}/kamailio/modules/diversion.so
+%{_libdir}/kamailio/modules/dlgs.so
 %{_libdir}/kamailio/modules/dmq.so
 %{_libdir}/kamailio/modules/domain.so
 %{_libdir}/kamailio/modules/domainpolicy.so
@@ -1639,6 +1649,7 @@ fi
 %{_libdir}/kamailio/modules/sst.so
 %{_libdir}/kamailio/modules/statistics.so
 %{_libdir}/kamailio/modules/stun.so
+%{_libdir}/kamailio/modules/sworker.so
 %{_libdir}/kamailio/modules/textops.so
 %{_libdir}/kamailio/modules/textopsx.so
 %{_libdir}/kamailio/modules/timer.so
@@ -1654,7 +1665,7 @@ fi
 %{_libdir}/kamailio/modules/uid_gflags.so
 %{_libdir}/kamailio/modules/uid_uri_db.so
 %{_libdir}/kamailio/modules/uri_db.so
-%{_libdir}/kamailio/modules/userblacklist.so
+%{_libdir}/kamailio/modules/userblocklist.so
 %{_libdir}/kamailio/modules/usrloc.so
 %{_libdir}/kamailio/modules/xhttp.so
 %{_libdir}/kamailio/modules/xhttp_prom.so
