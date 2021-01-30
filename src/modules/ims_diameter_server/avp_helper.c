@@ -394,14 +394,14 @@ int addAVPsfromJSON(AAAMessage *response, str * json) {
 	LM_WARN("addAVPsfromJSON: Called addAVPsfromJSON");
 
 	if (json == NULL) {
-		LM_WARN("addAVPsfromJSON: JSON is Null");
+		LM_WARN("JSON is set to Null");
 		json = &responsejson;
 	}
 	if (json->len <= 0) {
-		LM_WARN("addAVPsfromJSON: No JSON Response - Length of JSON keys is 0\n");
+		LM_WARN("No JSON Response - Length of JSON keys is 0\n");
 		return 0;
 	}
-	LM_WARN("addAVPsfromJSON: JSON Key length is %i", json->len);
+	LM_WARN("JSON Key length is %i", json->len);
 	cJSON * root = cJSON_Parse(json->s);
 	if (root) {
 		int i;
@@ -411,8 +411,10 @@ int addAVPsfromJSON(AAAMessage *response, str * json) {
 		}
 		// parselist(root, 0);
 		cJSON_Delete(root);
+		LM_WARN("Key is root - Returning 1");
 		return 1;
 	}
+	LM_WARN("Key is not root - Returning 0");
 	return 0;
 }
 
