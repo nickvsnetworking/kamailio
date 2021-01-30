@@ -302,22 +302,28 @@ int diameter_request(struct sip_msg * msg, char* peer, char* appid, char* comman
 		LM_ERR("failed to get Command-Code\n");
 		return -1;
 	}
+	LM_DBG("Trying to convert parameter values to a string");
+	LM_DBG("%s", message);
+
         if (get_str_fparam(&s_message, msg, (fparam_t*)message) < 0) {
-                LM_ERR("failed to get Message\n");
-                return -1;
+                LM_ERR("failed to get Message converted into string\n");
+               return -1;
         }
+
 	session = cdpb.AAACreateSession(0);
+	LM_DBG("Converted message");
 
 	req = cdpb.AAACreateRequest(i_appid, i_commandcode, Flag_Proxyable, session);
 	if (!req) goto error1;
 
 	if (addAVPsfromJSON(req, &s_message)) {
-		LM_ERR("Failed to parse JSON Request\n");
+		LM_ERR("Failed to add AVPs from JSON\n");
 		return -1;
 	}
-
+	LM_DBG("Added AVPs from JSON");
 
 	if (peer && (s_peer.len > 0)) {
+		LM_DBG("Sending to specified peer %s", s_peer.s);
 		if (async) {
 			cdpb.AAASendMessageToPeer(req, &s_peer, (void*) async_cdp_diameter_callback, req);
 			LM_DBG("Successfully sent async diameter\n");
@@ -333,6 +339,7 @@ int diameter_request(struct sip_msg * msg, char* peer, char* appid, char* comman
 			}
 		}
 	} else {
+		LM_DBG("No peer specified - Using CDP Logic to determine destination peer");
 		if (async) {
 			cdpb.AAASendMessage(req, (void*) async_cdp_diameter_callback, req);
 			LM_DBG("Successfully sent async diameter\n");

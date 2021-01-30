@@ -288,10 +288,10 @@ void parselist(AAAMessage *response, AAA_AVP_LIST *list, cJSON * item, int level
 	char x[4];
 	AAA_AVP_LIST avp_list;
 	str avp_list_s;
-
+	LM_DBG("Called parselist");
 	LM_DBG("------------------------------------------------------------------\n");
 	LM_DBG("%i) Item %s (%i / %s)\n", level, item->string, item->valueint, item->valuestring);
-	// LM_ERR("Got JSON:\n%s\n",  cJSON_Print(item));
+	LM_DBG("Got JSON:\n%s\n",  cJSON_Print(item));
 
 	if (cJSON_GetObjectItem(item,"avpCode")) {
 		LM_DBG("%i) avp-Code: %i\n", level, cJSON_GetObjectItem(item,"avpCode")->valueint);
@@ -391,13 +391,17 @@ void parselist(AAAMessage *response, AAA_AVP_LIST *list, cJSON * item, int level
 }
 
 int addAVPsfromJSON(AAAMessage *response, str * json) {
+	LM_WARN("addAVPsfromJSON: Called addAVPsfromJSON");
+
 	if (json == NULL) {
+		LM_WARN("addAVPsfromJSON: JSON is Null");
 		json = &responsejson;
 	}
 	if (json->len <= 0) {
-		LM_WARN("No JSON Response\n");
+		LM_WARN("addAVPsfromJSON: No JSON Response - Length of JSON keys is 0\n");
 		return 0;
 	}
+	LM_WARN("addAVPsfromJSON: JSON Key length is %i", json->len);
 	cJSON * root = cJSON_Parse(json->s);
 	if (root) {
 		int i;
